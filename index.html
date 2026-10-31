@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="A private, offline-friendly file splitter and joiner. No uploads, no dependencies, one HTML file.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>FileSplit — split & join files in your browser</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b111a; --panel: #111c28; --panel2: #152231;
+      --edge: #29394a; --edge2: #34465a; --text: #e8f0f7;
+      --muted: #92a7b9; --faint: #61788d; --accent: #7bf0cc;
+      --accent2: #99b8ff; --danger: #ff9a99; --gold: #f8cb78;
+      --round: 18px; --shadow: 0 24px 80px #02070d55;
+    }
+    * { box-sizing: border-box; }
+    html { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 15px; }
+    body { min-width: 310px; margin: 0; background: radial-gradient(ellipse 760px 540px at 85% -160px, #163c40 0%, transparent 78%), var(--bg); color: var(--text); line-height: 1.48; }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    button:disabled { opacity: .42; cursor: not-allowed; }
+    button:focus-visible, input:focus-visible, select:focus-visible, .dropzone:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    a { color: var(--accent); }
+    .shell { max-width: 1150px; margin: 0 auto; padding: 31px 27px 74px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .brand { display: flex; align-items: center; gap: 11px; font-weight: 760; letter-spacing: -.035em; font-size: 20px; }
+    .mark { display: grid; grid-template-columns: repeat(2, 13px); gap: 4px; transform: skewX(-9deg); }
+    .mark span { width: 13px; height: 27px; border-radius: 3px; background: var(--accent); }
+    .mark span + span { background: #85aaff; }
+    .tag { display: inline-flex; gap: 8px; align-items: center; border: 1px solid #275346; background: #12382f; color: #9bf4ce; font-weight: 700; border-radius: 100px; font-size: 11px; letter-spacing: .08em; padding: 7px 11px; text-transform: uppercase; }
+    .tag::before { content: ''; width: 6px; height: 6px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 10px var(--accent); }
+    .hero { margin: 78px 0 29px; max-width: 830px; }
+    .eyebrow { font-size: 11px; color: var(--accent); font-weight: 800; letter-spacing: .15em; text-transform: uppercase; }
+    h1 { margin: 10px 0 12px; font-size: clamp(38px, 5.6vw, 65px); line-height: 1.06; font-weight: 740; letter-spacing: -.065em; }
+    h1 em { font-style: normal; color: var(--accent); }
+    .intro { max-width: 710px; margin: 0; font-size: 17px; line-height: 1.65; color: var(--muted); }
+    .tabs { display: flex; gap: 7px; border-bottom: 1px solid var(--edge); margin: 30px 0 24px; }
+    .tab { padding: 13px 23px; background: none; border: 0; color: var(--muted); font-weight: 700; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+    .tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab:hover { color: #fff; }
+    .grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(300px, .95fr); gap: 20px; align-items: start; }
+    .panel { border: 1px solid var(--edge); background: linear-gradient(160deg, #152230, #0e1925 90%); border-radius: var(--round); box-shadow: var(--shadow); overflow: hidden; }
+    .panelinner { padding: 26px; }
+    .panel h2 { margin: 0; font-size: 22px; letter-spacing: -.032em; font-weight: 735; }
+    .sub { margin: 6px 0 19px; font-size: 13px; color: var(--muted); }
+    .step { display: flex; align-items: center; gap: 10px; margin: 28px 0 13px; color: #becbd7; font-size: 12px; letter-spacing: .055em; font-weight: 750; text-transform: uppercase; }
+    .step:first-of-type { margin-top: 8px; }
+    .stepnum { color: var(--accent); font-size: 11px; background: #1b3a38; border: 1px solid #2c5853; padding: 3px 8px; border-radius: 6px; }
+    .dropzone { cursor: pointer; position: relative; background: #0d1a26; border: 1.5px dashed #477063; border-radius: 13px; padding: 24px 16px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; transition: border .14s, background .14s; }
+    .dropzone:hover, .dropzone.dragging { border-color: var(--accent); background: #14332e; }
+    .dropzone .uploadicon { width: 43px; height: 43px; border-radius: 12px; display: grid; place-items: center; font-size: 24px; background: #1e3b39; color: var(--accent); margin-bottom: 5px; }
+    .dropzone strong { font-size: 14px; }
+    .dropzone span { font-size: 12px; color: var(--muted); }
+    .filepill { display: none; margin-top: 12px; padding: 11px 14px; background: #192c36; border: 1px solid #33555a; border-radius: 10px; align-items: center; justify-content: space-between; gap: 10px; }
+    .filepill.visible { display: flex; }
+    .filename { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 650; }
+    .filemeta { color: var(--muted); font-size: 12px; flex-shrink: 0; }
+    .modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+    .mode { border: 1px solid var(--edge2); background: #101e2a; color: var(--muted); padding: 12px 6px; border-radius: 10px; font-size: 13px; font-weight: 700; }
+    .mode.active { color: #c0ffe7; border-color: #58be9d; background: #193d37; }
+    .mode:hover:not(.active) { color: #fff; border-color: #72889b; }
+    .fields { display: grid; grid-template-columns: 1fr 145px; gap: 11px; align-items: end; margin-top: 14px; }
+    .fields.single { grid-template-columns: 1fr; }
+    label.fieldlabel { display: block; color: #b7c8d4; font-size: 12px; margin: 0 0 7px; font-weight: 650; }
+    .control { width: 100%; border: 1px solid #3b4e60; background: #0b1823; border-radius: 9px; color: var(--text); padding: 12px 12px; min-height: 46px; }
+    .control:focus { border-color: var(--accent); }
+    .hint { margin: 10px 0 0; color: var(--faint); font-size: 12px; line-height: 1.5; }
+    details { border-top: 1px solid var(--edge); margin-top: 25px; padding-top: 15px; }
+    summary { font-size: 13px; font-weight: 700; color: #bdccd8; cursor: pointer; }
+    .advanced { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 12px; margin-top: 16px; }
+    .advanced .wide { grid-column: 1 / -1; }
+    .action { border: 0; background: var(--accent); color: #092c26; border-radius: 10px; min-height: 48px; font-weight: 800; padding: 12px 18px; }
+    .action:hover:not(:disabled) { background: #a6ffe0; }
+    .action.secondary { background: #213549; color: var(--text); border: 1px solid #476072; }
+    .action.secondary:hover:not(:disabled) { background: #29425a; }
+    .action.ghost { background: transparent; color: var(--muted); border: 1px solid var(--edge2); }
+    .action.ghost:hover:not(:disabled) { color: white; }
+    .actionrow { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 23px; }
+    .actionrow > .action { flex: 1 1 auto; }
+    .status { margin-top: 15px; border-radius: 10px; font-size: 13px; line-height: 1.5; padding: 11px 12px; background: #142837; color: #bcd7e8; border: 1px solid #31526a; }
+    .status.error { background: #392124; border-color: #794547; color: #ffbfbc; }
+    .status.good { background: #18372f; border-color: #38735f; color: #b0f3d5; }
+    [hidden] { display: none !important; }
+    .progressline { height: 5px; overflow: hidden; border-radius: 100px; background: #29394b; margin-top: 10px; }
+    .progressfill { width: 0; height: 100%; background: var(--accent); transition: width .12s; }
+    .progressmeta { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 8px; }
+    .previewheader { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+    .pretag { color: #b5c8d8; font-size: 11px; border: 1px solid #355060; border-radius: 6px; padding: 3px 7px; letter-spacing: .08em; }
+    .blank { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 295px; text-align: center; color: var(--muted); }
+    .blankart { height: 100px; display: flex; gap: 7px; align-items: center; margin-bottom: 15px; }
+    .blankart i { height: 62px; width: 24px; border-radius: 6px; border: 1px solid #38635f; background: #21483f; transform: rotate(-6deg); }
+    .blankart i:nth-child(2) { height: 77px; transform: rotate(0deg); background: #2e5868; }
+    .blankart i:nth-child(3) { height: 55px; transform: rotate(6deg); background: #284267; }
+    .blank strong { color: #c8d8e4; margin-bottom: 5px; }
+    .blank p { max-width: 240px; margin: 0; font-size: 13px; }
+    .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 21px 0; }
+    .stat { border: 1px solid #33485a; background: #0e1b28; border-radius: 12px; padding: 14px 15px; min-width: 0; }
+    .stat small { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; font-weight: 700; margin-bottom: 5px; }
+    .stat strong { display: block; font-size: clamp(21px, 2.5vw, 29px); line-height: 1.1; letter-spacing: -.03em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    .partsmap { display: flex; gap: 2px; height: 37px; width: 100%; overflow: hidden; border-radius: 8px; background: #1e3341; }
+    .partsmap span { display: block; min-width: 1px; background: #6b9ef1; }
+    .partsmap span:nth-child(3n+1) { background: #69d9b8; }
+    .partsmap span:nth-child(3n+2) { background: #749fbd; }
+    .previewcaption { margin: 10px 0 20px; font-size: 12px; color: var(--muted); }
+    .commandbox { padding: 15px; border: 1px solid #314656; background: #0a141d; border-radius: 11px; margin-top: 20px; }
+    .commandbox span { color: var(--faint); font-size: 11px; text-transform: uppercase; font-weight: 750; letter-spacing: .07em; }
+    .commandbox code { display: block; margin-top: 8px; color: #a8efcf; font-size: 12px; word-break: break-all; line-height: 1.6; user-select: all; }
+    .partslist { border-top: 1px solid var(--edge); margin-top: 22px; padding-top: 18px; }
+    .partslist h3 { font-size: 13px; letter-spacing: .03em; margin: 0 0 12px; }
+    .partrow { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid #273745; }
+    .partname { flex: 1; min-width: 0; font-size: 12px; color: #d5e3ed; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .partsize { flex-shrink: 0; font-size: 11px; color: var(--muted); }
+    .smalldl { border: 1px solid #3b5c62; color: #a7efd5; background: #1b3438; border-radius: 7px; font-size: 11px; min-height: 32px; padding: 5px 9px; font-weight: 750; }
+    .more { background: none; border: 0; padding: 13px 0 0; font-size: 12px; color: var(--accent); text-align: left; }
+    .footer { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; color: var(--faint); font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #1d2d3b; }
+    .footer strong { color: #b9cbda; }
+    .joinlist { margin-top: 15px; max-height: 420px; overflow: auto; }
+    .joinrow { display: flex; align-items: center; gap: 9px; padding: 10px 0; border-bottom: 1px solid var(--edge); }
+    .joinrow .partname { font-size: 13px; }
+    .move { color: #cee0eb; background: #223448; border: 1px solid #3b5264; padding: 4px 8px; border-radius: 5px; min-width: 30px; min-height: 31px; }
+    .joininfo { background: #112a2f; border: 1px solid #31545b; border-radius: 10px; padding: 13px; color: #bddad7; margin-top: 17px; font-size: 12px; }
+    .joininfo strong { display: block; font-size: 13px; color: var(--text); margin-bottom: 3px; }
+    .infobox { margin-top: 18px; border: 1px solid #2a434e; background: #112730; border-radius: 12px; padding: 18px; color: #acc6d0; font-size: 13px; }
+    .infobox strong { color: #d9ecf5; }
+    .footnote { color: var(--faint); font-size: 11px; margin: 12px 0 0; }
+    @media (max-width: 750px) {
+      .shell { padding: 20px 16px 50px; }
+      .hero { margin: 57px 0 20px; }
+      .intro { font-size: 15px; }
+      .grid { grid-template-columns: 1fr; }
+      .panelinner { padding: 21px 18px; }
+      .fields { grid-template-columns: 1fr 115px; }
+      .tabs { margin-top: 20px; }
+      .tab { flex: 1; text-align: center; }
+      .actionrow { flex-direction: column; }
+      .actionrow > .action { flex: 0 0 auto; width: 100%; }
+      .stat strong { font-size: 25px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .001ms !important; } }
+  </style>
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="brand" aria-label="FileSplit"><span class="mark" aria-hidden="true"><span></span><span></span></span>filesplit<span style="font-size:11px;color:var(--faint);font-weight:500;letter-spacing:0;margin-left:1px">/ files</span></div>
+    <span class="tag">100% local</span>
+  </header>
+  <section class="hero">
+    <div class="eyebrow">One file. No installs. No uploads.</div>
+    <h1>Big files, <em>smaller pieces.</em></h1>
+    <p class="intro">A standalone, browser-based take on Linux <code>split</code>. Divide any file by size, line count, or number of parts. Reassemble it later, byte for byte. Everything happens on your device.</p>
+  </section>
+  <nav class="tabs" role="tablist" aria-label="Operation">
+    <button class="tab" id="splitTab" role="tab" aria-controls="splitView" aria-selected="true">Split a file</button>
+    <button class="tab" id="joinTab" role="tab" aria-controls="joinView" aria-selected="false">Join files</button>
+  </nav>
+  <div class="grid" id="splitView" role="tabpanel" aria-labelledby="splitTab">
+    <section class="panel"><div class="panelinner">
+      <h2>Set up your split</h2>
+      <p class="sub">Choose a file, then how you'd like to divide it.</p>
+      <div class="step"><span class="stepnum">01</span> Choose a source</div>
+      <div class="dropzone" id="splitDrop" tabindex="0" role="button" aria-label="Choose a file to split">
+        <div class="uploadicon" aria-hidden="true">⇧</div><strong>Drop a file here or browse</strong><span>Any file type · stays on your device</span>
+      </div>
+      <input id="splitInput" type="file" hidden>
+      <div id="filePill" class="filepill"><span class="filename" id="fileName"></span><span class="filemeta" id="fileSize"></span></div>
+
+      <div class="step"><span class="stepnum">02</span> Split method</div>
+      <div class="modes" role="group" aria-label="Split method">
+        <button type="button" class="mode active" data-mode="bytes" aria-pressed="true">File size</button>
+        <button type="button" class="mode" data-mode="lines" aria-pressed="false">Lines</button>
+        <button type="button" class="mode" data-mode="count" aria-pressed="false">Part count</button>
+      </div>
+      <div id="bytesFields" class="fields">
+        <div><label class="fieldlabel" for="byteAmount">Maximum size per part</label><input class="control" id="byteAmount" type="number" min="1" step="1" value="10" inputmode="numeric"></div>
+        <div><label class="fieldlabel" for="byteUnit">Unit</label><select class="control" id="byteUnit"><option value="1048576">MiB</option><option value="1024">KiB</option><option value="1">Bytes</option><option value="1073741824">GiB</option><option value="1000000">MB</option><option value="1000">KB</option><option value="1000000000">GB</option></select></div>
+      </div>
+      <div id="linesFields" class="fields single" hidden><div><label class="fieldlabel" for="lineAmount">Lines per part</label><input class="control" id="lineAmount" type="number" min="1" step="1" value="1000" inputmode="numeric"></div></div>
+      <div id="countFields" class="fields single" hidden><div><label class="fieldlabel" for="partAmount">Number of parts</label><input class="control" id="partAmount" type="number" min="1" max="10000" step="1" value="4" inputmode="numeric"></div></div>
+      <p id="modeHint" class="hint">Exact byte boundaries, including for binary files. Every byte is retained.</p>
+      <details id="advancedDetails"><summary>Advanced naming options</summary>
+        <div class="advanced">
+          <div class="wide"><label class="fieldlabel" for="prefix">Output filename prefix</label><input class="control" id="prefix" type="text" value="x" maxlength="180" spellcheck="false"></div>
+          <div><label class="fieldlabel" for="suffixType">Suffix style</label><select class="control" id="suffixType"><option value="numeric">Numeric (000, 001)</option><option value="alpha">Alphabetic (aa, ab)</option></select></div>
+          <div><label class="fieldlabel" for="suffixWidth">Minimum suffix length</label><input class="control" id="suffixWidth" type="number" min="2" max="8" step="1" value="3"></div>
+          <div class="wide"><label class="fieldlabel" for="extraSuffix">Additional suffix (optional)</label><input class="control" id="extraSuffix" type="text" maxlength="60" placeholder="e.g. .bin" spellcheck="false"></div>
+        </div>
+        <p class="hint">Set the prefix to <code>x</code>, alphabetic style, and width 2 for familiar GNU-style names such as <code>xaa</code>, <code>xab</code>.</p>
+      </details>
+      <div class="actionrow"><button id="prepareButton" class="action" disabled>Prepare parts →</button></div>
+      <div id="splitProgress" hidden><div class="progressline"><div class="progressfill" id="splitProgressFill"></div></div><div class="progressmeta"><span id="splitProgressText"></span><span id="splitProgressPercent"></span></div><button class="more" id="cancelButton" type="button">Cancel operation</button></div>
+      <div id="splitStatus" class="status" role="status" aria-live="polite" hidden></div>
+    </div></section>
+    <aside class="panel"><div class="panelinner">
+      <div class="previewheader"><h2>Output preview</h2><span class="pretag">LOCAL</span></div>
+      <p class="sub">Review your pieces before downloading.</p>
+      <div id="splitBlank" class="blank"><div class="blankart" aria-hidden="true"><i></i><i></i><i></i></div><strong>Ready when you are</strong><p>Pick a file and prepare your split to see the output here.</p></div>
+      <div id="splitResult" hidden>
+        <div class="stats"><div class="stat"><small>Output parts</small><strong id="resultCount">—</strong></div><div class="stat"><small>Largest part</small><strong id="resultSize">—</strong></div></div>
+        <div class="partsmap" id="partsMap" role="img" aria-label="Relative sizes of output pieces"></div>
+        <p class="previewcaption" id="partsCaption"></p>
+        <div class="actionrow"><button class="action" id="zipButton">↓ Download ZIP</button><button class="action secondary" id="folderButton" hidden>Save to folder</button></div>
+        <p class="footnote">ZIP files are uncompressed: the pieces contain the original bytes. For very large files, save directly to a folder where supported.</p>
+        <div class="commandbox"><span>Roughly equivalent Linux command</span><code id="linuxCommand"></code></div>
+        <div class="partslist"><h3>Individual pieces</h3><div id="partsRows"></div><button id="moreParts" class="more" hidden>Show more pieces</button></div>
+      </div>
+    </div></aside>
+  </div>
+  <div class="grid" id="joinView" role="tabpanel" aria-labelledby="joinTab" hidden>
+    <section class="panel"><div class="panelinner">
+      <h2>Put it back together</h2>
+      <p class="sub">Select the pieces. Their bytes will be concatenated in the order shown.</p>
+      <div class="step"><span class="stepnum">01</span> Choose the pieces</div>
+      <div class="dropzone" id="joinDrop" tabindex="0" role="button" aria-label="Choose split parts to join">
+        <div class="uploadicon" aria-hidden="true">⇧</div><strong>Drop parts here or browse</strong><span>Select multiple files · no uploads</span>
+      </div>
+      <input id="joinInput" type="file" multiple hidden>
+      <div id="joinList" class="joinlist" aria-label="Pieces in joining order"></div>
+      <div class="step"><span class="stepnum">02</span> Name the joined file</div>
+      <label class="fieldlabel" for="joinName">Output filename</label><input class="control" id="joinName" type="text" value="rejoined-file" maxlength="250" spellcheck="false">
+      <div class="actionrow"><button class="action" id="joinButton" disabled>↓ Download joined file</button><button class="action secondary" id="joinSaveButton" hidden disabled>Save to file</button></div>
+      <div id="joinStatus" role="status" aria-live="polite" class="status" hidden></div>
+      <p class="footnote">Arrange the files in the correct order before joining. Missing, duplicate, or out-of-order parts produce a different file.</p>
+    </div></section>
+    <aside class="panel"><div class="panelinner">
+      <div class="previewheader"><h2>Reassembly</h2><span class="pretag">LOSSLESS</span></div>
+      <p class="sub">Like <code>cat part-* &gt; original.file</code>, without a terminal.</p>
+      <div class="stats"><div class="stat"><small>Selected pieces</small><strong id="joinCount">0</strong></div><div class="stat"><small>Combined size</small><strong id="joinSize">0 B</strong></div></div>
+      <div class="joininfo"><strong>Preserves the exact bytes</strong>The join operation appends each selected file without changing its contents or encoding. It does not decompress or interpret the pieces.</div>
+      <div class="infobox"><strong>Tip: order matters.</strong><p style="margin:7px 0 0">Pieces are initially sorted by filename (with numeric-aware sorting). If your names aren't numbered in order, use the arrows to rearrange them.</p></div>
+      <div class="commandbox"><span>Linux equivalent</span><code>cat original.part-* &gt; original</code></div>
+    </div></aside>
+  </div>
+  <footer class="footer"><div><strong>Private by design.</strong> No server, cookies, analytics, accounts, or external dependencies.</div><div>Single-file app · HTML + CSS + JavaScript · Works offline</div></footer>
+</div>
+<script>
+'use strict';
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const MAX_PARTS = 10000;
+  const MAX_ZIP_BYTES = 1.5 * 1024 ** 3;
+  const BLOCK = 2 * 1024 * 1024;
+  const encoder = new TextEncoder();
+  let sourceFile = null;
+  let mode = 'bytes';
+  let plan = null;
+  let working = false;
+  let cancelRequested = false;
+  let joinFiles = [];
+  let showAll = false;
+  const canPickDir = typeof window.showDirectoryPicker === 'function';
+  const canPickSave = typeof window.showSaveFilePicker === 'function';
+
+  const readableSize = (bytes) => {
+    if (bytes < 1024) return `${bytes.toLocaleString()} B`;
+    const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+    let n = bytes, idx = 0;
+    while (n >= 1024 && idx < units.length - 1) { n /= 1024; idx++; }
+    return `${n.toLocaleString(undefined, {maximumFractionDigits: n < 10 ? 2 : 1})} ${units[idx]}`;
+  };
+  const showStatus = (id, text, type = '') => { const el = $(id); el.textContent = text; el.className = 'status' + (type ? ` ${type}` : ''); el.hidden = false; };
+  const clearStatus = (id) => { $(id).hidden = true; };
+  const assertSafeFileName = (value, field) => {
+    const name = value.trim();
+    if (!name || /[\\/:*?"<>|\u0000-\u001f]/.test(name) || name === '.' || name === '..') {
+      throw new Error(`${field} must be a nonempty filename without slashes or reserved characters.`);
+    }
+    return name;
+  };
+  const positiveInteger = (id, label, max = Number.MAX_SAFE_INTEGER) => {
+    const value = Number($(id).value);
+    if (!Number.isSafeInteger(value) || value < 1 || value > max) throw new Error(`Enter a valid ${label} between 1 and ${max.toLocaleString()}.`);
+    return value;
+  };
+  function currentSettings() {
+    const prefix = assertSafeFileName($('prefix').value, 'Prefix');
+    const extra = $('extraSuffix').value.trim();
+    if (/[\\/:*?"<>|\u0000-\u001f]/.test(extra)) throw new Error('Additional suffix has unsupported characters.');
+    const width = positiveInteger('suffixWidth', 'suffix length', 8);
+    if (width < 2) throw new Error('Suffix length must be at least 2.');
+    const style = $('suffixType').value;
+    let quantity;
+    if (mode === 'bytes') {
+      const amount = positiveInteger('byteAmount', 'part size');
+      quantity = amount * Number($('byteUnit').value);
+      if (!Number.isSafeInteger(quantity) || quantity < 1) throw new Error('Part size is too large.');
+    } else if (mode === 'lines') {
+      quantity = positiveInteger('lineAmount', 'line count');
+    } else {
+      quantity = positiveInteger('partAmount', 'number of parts', MAX_PARTS);
+    }
+    return { mode, quantity, prefix, extra, width, style };
+  }
+  function suffixFor(index, count, settings) {
+    if (settings.style === 'numeric') {
+      const width = Math.max(settings.width, String(count - 1).length);
+      return String(index).padStart(width, '0');
+    }
+    let width = settings.width;
+    while (26 ** width < count) width++;
+    let value = index;
+    let suffix = '';
+    for (let i = 0; i < width; i++) {
+      suffix = String.fromCharCode(97 + value % 26) + suffix;
+      value = Math.floor(value / 26);
+    }
+    return suffix;
+  }
+  const partName = (index) => `${plan.settings.prefix}${suffixFor(index, plan.ranges.length, plan.settings)}${plan.settings.extra}`;
+  function setWorking(active, label = '') {
+    working = active;
+    $('prepareButton').disabled = active || !sourceFile;
+    $('zipButton').disabled = active || !plan || !plan.ranges.length || sourceFile.size > MAX_ZIP_BYTES;
+    $('folderButton').disabled = active || !plan || !plan.ranges.length;
+    $('splitProgress').hidden = !active;
+    if (active) { cancelRequested = false; setProgress(0, label); }
+  }
+  function setProgress(p, label) {
+    $('splitProgressFill').style.width = `${Math.round(Math.min(1, Math.max(0, p)) * 100)}%`;
+    $('splitProgressText').textContent = label;
+    $('splitProgressPercent').textContent = `${Math.round(p * 100)}%`;
+  }
+  function checkCancel() { if (cancelRequested) throw new Error('Operation cancelled.'); }
+  function invalidate() {
+    if (working) return;
+    plan = null;
+    showAll = false;
+    $('splitResult').hidden = true;
+    $('splitBlank').hidden = false;
+    clearStatus('splitStatus');
+  }
+  function attachDrop(zone, input, onFiles) {
+    const pick = () => { if (!working) input.click(); };
+    zone.addEventListener('click', pick);
+    zone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+    input.addEventListener('change', () => { if (input.files.length) onFiles([...input.files]); input.value = ''; });
+    zone.addEventListener('dragenter', e => { e.preventDefault(); zone.classList.add('dragging'); });
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragging'); });
+    zone.addEventListener('dragleave', e => { if (!zone.contains(e.relatedTarget)) zone.classList.remove('dragging'); });
+    zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('dragging'); if (!working && e.dataTransfer.files.length) onFiles([...e.dataTransfer.files]); });
+  }
+  attachDrop($('splitDrop'), $('splitInput'), files => {
+    sourceFile = files[0];
+    $('filePill').classList.add('visible');
+    $('fileName').textContent = sourceFile.name;
+    $('fileSize').textContent = readableSize(sourceFile.size);
+    $('prefix').value = `${sourceFile.name}.part-`.slice(0, 180);
+    $('prepareButton').disabled = false;
+    invalidate();
+  });
+  document.querySelectorAll('.mode').forEach(btn => btn.addEventListener('click', () => {
+    if (working) return;
+    mode = btn.dataset.mode;
+    document.querySelectorAll('.mode').forEach(b => { b.classList.toggle('active', b === btn); b.setAttribute('aria-pressed', String(b === btn)); });
+    $('bytesFields').hidden = mode !== 'bytes';
+    $('linesFields').hidden = mode !== 'lines';
+    $('countFields').hidden = mode !== 'count';
+    $('modeHint').textContent = mode === 'lines' ? 'Counts LF line endings, like split -l. Each line remains intact, including CRLF bytes.' : mode === 'count' ? 'Divide into exactly N consecutive pieces. Earlier pieces get any extra bytes.' : 'Exact byte boundaries, including for binary files. Every byte is retained.';
+    invalidate();
+  }));
+  for (const id of ['byteAmount','byteUnit','lineAmount','partAmount','prefix','suffixType','suffixWidth','extraSuffix']) {
+    $(id).addEventListener('input', invalidate);
+    $(id).addEventListener('change', invalidate);
+  }
+  function addRange(ranges, start, end) {
+    if (ranges.length >= MAX_PARTS) throw new Error(`This split would exceed ${MAX_PARTS.toLocaleString()} parts. Increase part size or lower the part count.`);
+    ranges.push({start, end});
+  }
+  async function computeRanges(file, settings) {
+    const ranges = [];
+    if (settings.mode === 'bytes') {
+      const count = Math.ceil(file.size / settings.quantity);
+      if (count > MAX_PARTS) throw new Error(`That would create ${count.toLocaleString()} parts. Increase the size per part (maximum ${MAX_PARTS.toLocaleString()} parts).`);
+      for (let start = 0; start < file.size; start += settings.quantity) addRange(ranges, start, Math.min(file.size, start + settings.quantity));
+    } else if (settings.mode === 'count') {
+      const base = Math.floor(file.size / settings.quantity);
+      const remainder = file.size % settings.quantity;
+      let start = 0;
+      for (let i = 0; i < settings.quantity; i++) {
+        const end = start + base + (i < remainder ? 1 : 0);
+        addRange(ranges, start, end);
+        start = end;
+      }
+    } else {
+      let start = 0, lines = 0;
+      for (let offset = 0; offset < file.size; offset += BLOCK) {
+        checkCancel();
+        const bytes = new Uint8Array(await file.slice(offset, offset + BLOCK).arrayBuffer());
+        for (let i = 0; i < bytes.length; i++) {
+          if (bytes[i] !== 10) continue;
+          lines++;
+          if (lines === settings.quantity) {
+            const end = offset + i + 1;
+            addRange(ranges, start, end);
+            start = end;
+            lines = 0;
+          }
+        }
+        setProgress((offset + bytes.length) / file.size, 'Counting line boundaries…');
+        if (offset % (BLOCK * 8) === 0) await new Promise(resolve => requestAnimationFrame(resolve));
+      }
+      if (start < file.size) addRange(ranges, start, file.size);
+    }
+    return ranges;
+  }
+  function shellQuote(text) { return `'${text.replaceAll("'", "'\\''")}'`; }
+  function commandFor(settings, file, count) {
+    const style = settings.style === 'numeric' ? '-d' : '';
+    let width = settings.width;
+    if (settings.style === 'numeric') width = Math.max(width, String(count - 1).length);
+    else while (26 ** width < count) width++;
+    const option = settings.mode === 'bytes' ? `-b ${settings.quantity}` : settings.mode === 'lines' ? `-l ${settings.quantity}` : `-n ${settings.quantity}`;
+    const extra = settings.extra ? ` --additional-suffix=${shellQuote(settings.extra)}` : '';
+    return `split ${option}${style ? ` ${style}` : ''} -a ${width}${extra} -- ${shellQuote(file.name)} ${shellQuote(settings.prefix)}`;
+  }
+  function renderMap(ranges, size) {
+    const root = $('partsMap'); root.replaceChildren();
+    const count = Math.min(72, ranges.length);
+    if (!count) return;
+    for (let i = 0; i < count; i++) {
+      const a = Math.floor(i * ranges.length / count);
+      const b = Math.floor((i + 1) * ranges.length / count);
+      let subtotal = 0;
+      for (let j = a; j < b; j++) subtotal += ranges[j].end - ranges[j].start;
+      const segment = document.createElement('span');
+      segment.style.flex = `${Math.max(subtotal / Math.max(size, 1), .00001)} 1 0`;
+      root.append(segment);
+    }
+  }
+  function downloadBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = name;
+    a.style.display = 'none'; document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 120000);
+  }
+  function renderPartRows() {
+    if (!plan) return;
+    const root = $('partsRows'); root.replaceChildren();
+    const count = plan.ranges.length;
+    const limit = showAll ? Math.min(count, 200) : Math.min(count, 9);
+    for (let i = 0; i < limit; i++) {
+      const range = plan.ranges[i];
+      const row = document.createElement('div'); row.className = 'partrow';
+      const name = document.createElement('span'); name.className = 'partname'; name.textContent = partName(i); name.title = name.textContent;
+      const size = document.createElement('span'); size.className = 'partsize'; size.textContent = readableSize(range.end - range.start);
+      const btn = document.createElement('button'); btn.className = 'smalldl'; btn.textContent = '↓'; btn.title = `Download ${name.textContent}`; btn.setAttribute('aria-label', btn.title);
+      btn.addEventListener('click', () => downloadBlob(sourceFile.slice(range.start, range.end), partName(i)));
+      row.append(name, size, btn); root.append(row);
+    }
+    $('moreParts').hidden = count <= 9 || (showAll && count <= 200);
+    $('moreParts').textContent = !showAll ? `Show more (${count.toLocaleString()} total)` : `Showing first 200 of ${count.toLocaleString()}; use ZIP or folder to get all`;
+    $('moreParts').disabled = showAll;
+  }
+  $('moreParts').addEventListener('click', () => { showAll = true; renderPartRows(); });
+  function renderPlan() {
+    const ranges = plan.ranges;
+    $('splitBlank').hidden = true; $('splitResult').hidden = false;
+    $('resultCount').textContent = ranges.length.toLocaleString();
+    $('resultSize').textContent = ranges.length ? readableSize(Math.max(...ranges.map(r => r.end - r.start))) : '0 B';
+    renderMap(ranges, sourceFile.size);
+    $('partsCaption').textContent = !ranges.length ? 'Empty source: no pieces are generated in this mode.' : `${readableSize(sourceFile.size)} total · ${partName(0)}${ranges.length > 1 ? ` → ${partName(ranges.length - 1)}` : ''}`;
+    $('linuxCommand').textContent = commandFor(plan.settings, sourceFile, ranges.length);
+    $('zipButton').disabled = !ranges.length || sourceFile.size > MAX_ZIP_BYTES;
+    $('zipButton').title = sourceFile.size > MAX_ZIP_BYTES ? 'ZIP downloads are limited to 1.5 GiB to avoid browser memory limits. Use Save to folder or individual files.' : '';
+    $('folderButton').hidden = !canPickDir;
+    $('folderButton').disabled = !ranges.length;
+    showAll = false; renderPartRows();
+    if (sourceFile.size > MAX_ZIP_BYTES) showStatus('splitStatus', 'Large file: ZIP is disabled above 1.5 GiB. Use “Save to folder” in supported browsers, or download parts individually.');
+    else if (!ranges.length) showStatus('splitStatus', 'The input is empty. No pieces are created by this split method.');
+    else showStatus('splitStatus', `${ranges.length.toLocaleString()} part${ranges.length === 1 ? '' : 's'} ready. Choose ZIP, folder, or individual downloads.`, 'good');
+  }
+  $('prepareButton').addEventListener('click', async () => {
+    if (!sourceFile || working) return;
+    let settings;
+    try { settings = currentSettings(); }
+    catch (e) { showStatus('splitStatus', e.message, 'error'); return; }
+    invalidate(); setWorking(true, settings.mode === 'lines' ? 'Counting line boundaries…' : 'Calculating boundaries…');
+    const input = sourceFile;
+    try {
+      const ranges = await computeRanges(input, settings);
+      checkCancel(); plan = {ranges, settings};
+      renderPlan();
+    } catch (e) { showStatus('splitStatus', e.message, 'error'); }
+    finally { setWorking(false); }
+  });
+  $('cancelButton').addEventListener('click', () => { cancelRequested = true; $('splitProgressText').textContent = 'Cancelling…'; });
+
+  // Standard, uncompressed ZIP writer (no external libraries, no repacking of file bytes).
+  // ZIP32 metadata permits < 4 GiB; this app deliberately uses a stricter 1.5 GiB limit.
+  const crcTable = (() => {
+    const table = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) { let c = i; for (let j = 0; j < 8; j++) c = (c & 1) ? 0xedb88320 ^ (c >>> 1) : c >>> 1; table[i] = c >>> 0; }
+    return table;
+  })();
+  function dosDatetime(date) {
+    const y = Math.max(1980, Math.min(2107, date.getFullYear()));
+    return {date: ((y - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate(), time: (date.getHours() << 11) | (date.getMinutes() << 5) | (date.getSeconds() >>> 1)};
+  }
+  function localHeader(name, crc, size, stamp) {
+    const a = new Uint8Array(30 + name.length), v = new DataView(a.buffer);
+    v.setUint32(0, 0x04034b50, true); v.setUint16(4, 20, true); v.setUint16(6, 0x800, true);
+    v.setUint16(8, 0, true); v.setUint16(10, stamp.time, true); v.setUint16(12, stamp.date, true);
+    v.setUint32(14, crc, true); v.setUint32(18, size, true); v.setUint32(22, size, true);
+    v.setUint16(26, name.length, true); v.setUint16(28, 0, true); a.set(name, 30); return a;
+  }
+  function centralHeader(name, crc, size, stamp, offset) {
+    const a = new Uint8Array(46 + name.length), v = new DataView(a.buffer);
+    v.setUint32(0, 0x02014b50, true); v.setUint16(4, 20, true); v.setUint16(6, 20, true);
+    v.setUint16(8, 0x800, true); v.setUint16(10, 0, true); v.setUint16(12, stamp.time, true);
+    v.setUint16(14, stamp.date, true); v.setUint32(16, crc, true);
+    v.setUint32(20, size, true); v.setUint32(24, size, true);
+    v.setUint16(28, name.length, true); v.setUint16(30, 0, true); v.setUint16(32, 0, true);
+    v.setUint16(34, 0, true); v.setUint16(36, 0, true); v.setUint32(38, 0, true);
+    v.setUint32(42, offset, true); a.set(name, 46); return a;
+  }
+  function endOfCentral(count, size, offset) {
+    const a = new Uint8Array(22), v = new DataView(a.buffer);
+    v.setUint32(0, 0x06054b50, true); v.setUint16(4, 0, true); v.setUint16(6, 0, true);
+    v.setUint16(8, count, true); v.setUint16(10, count, true);
+    v.setUint32(12, size, true); v.setUint32(16, offset, true); v.setUint16(20, 0, true);
+    return a;
+  }
+  async function crcRange(file, start, end, update) {
+    let crc = 0xffffffff;
+    for (let pos = start; pos < end; pos += BLOCK) {
+      checkCancel();
+      const arr = new Uint8Array(await file.slice(pos, Math.min(pos + BLOCK, end)).arrayBuffer());
+      for (let i = 0; i < arr.length; i++) crc = crcTable[(crc ^ arr[i]) & 255] ^ (crc >>> 8);
+      update(arr.length);
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+  }
+  async function makeZip(file, ranges) {
+    if (file.size > MAX_ZIP_BYTES) throw new Error('ZIP size limit exceeded; use folder output or individual parts.');
+    const content = [], central = [], stamp = dosDatetime(new Date(file.lastModified || Date.now()));
+    let offset = 0, doneBytes = 0;
+    for (let i = 0; i < ranges.length; i++) {
+      checkCancel();
+      const r = ranges[i], size = r.end - r.start, nameBytes = encoder.encode(partName(i));
+      if (size > 0xffffffff || nameBytes.length > 65535) throw new Error('ZIP entry exceeds format limits.');
+      const crc = await crcRange(file, r.start, r.end, n => {
+        doneBytes += n;
+        if (i % 16 === 0) setProgress(file.size ? doneBytes / file.size : (i + 1) / ranges.length, `Calculating ZIP checksums · ${i + 1}/${ranges.length}`);
+      });
+      const header = localHeader(nameBytes, crc, size, stamp);
+      if (offset + header.length + size > 0xffffffff) throw new Error('ZIP archive exceeds standard ZIP32 limits.');
+      content.push(header, file.slice(r.start, r.end));
+      central.push(centralHeader(nameBytes, crc, size, stamp, offset));
+      offset += header.length + size;
+      if (i % 20 === 0) await new Promise(resolve => requestAnimationFrame(resolve));
+    }
+    const centralOffset = offset;
+    for (const entry of central) { content.push(entry); offset += entry.length; }
+    content.push(endOfCentral(ranges.length, offset - centralOffset, centralOffset));
+    setProgress(1, 'ZIP ready');
+    return new Blob(content, {type: 'application/zip'});
+  }
+  $('zipButton').addEventListener('click', async () => {
+    if (!plan || !plan.ranges.length || working) return;
+    setWorking(true, 'Calculating ZIP checksums…');
+    try {
+      const blob = await makeZip(sourceFile, plan.ranges);
+      checkCancel();
+      downloadBlob(blob, `${sourceFile.name}.parts.zip`);
+      showStatus('splitStatus', 'ZIP download started. The archive contains your raw, ordered file pieces.', 'good');
+    } catch (e) { showStatus('splitStatus', e.message, 'error'); }
+    finally { setWorking(false); }
+  });
+  $('folderButton').addEventListener('click', async () => {
+    if (!canPickDir || !plan || !plan.ranges.length || working) return;
+    let folder;
+    try { folder = await window.showDirectoryPicker({mode: 'readwrite'}); }
+    catch (e) { if (e.name !== 'AbortError') showStatus('splitStatus', `Could not open folder: ${e.message}`, 'error'); return; }
+    setWorking(true, 'Saving parts…');
+    try {
+      for (let i = 0; i < plan.ranges.length; i++) {
+        checkCancel();
+        const r = plan.ranges[i];
+        const handle = await folder.getFileHandle(partName(i), {create:true});
+        const writer = await handle.createWritable();
+        try { await writer.write(sourceFile.slice(r.start, r.end)); await writer.close(); }
+        catch (e) { await writer.abort().catch(() => {}); throw e; }
+        setProgress((i + 1) / plan.ranges.length, `Writing piece ${i + 1}/${plan.ranges.length}`);
+        if (i % 8 === 0) await new Promise(resolve => requestAnimationFrame(resolve));
+      }
+      showStatus('splitStatus', `Saved ${plan.ranges.length.toLocaleString()} pieces to the selected folder.`, 'good');
+    } catch (e) { showStatus('splitStatus', `${e.message} Files already written to the folder may remain there.`, 'error'); }
+    finally { setWorking(false); }
+  });
+  function setTab(which) {
+    const split = which === 'split';
+    $('splitView').hidden = !split; $('joinView').hidden = split;
+    $('splitTab').setAttribute('aria-selected', String(split));
+    $('joinTab').setAttribute('aria-selected', String(!split));
+  }
+  $('splitTab').addEventListener('click', () => setTab('split'));
+  $('joinTab').addEventListener('click', () => setTab('join'));
+  function inferJoinedName(name) {
+    const m = name.match(/^(.*)\.part[-_.]?\d+(?:\.[a-z0-9_-]+)?$/i);
+    return m && m[1] ? m[1] : 'rejoined-file';
+  }
+  function renderJoin() {
+    const root = $('joinList'); root.replaceChildren();
+    $('joinCount').textContent = joinFiles.length.toLocaleString();
+    $('joinSize').textContent = readableSize(joinFiles.reduce((n, f) => n + f.size, 0));
+    $('joinButton').disabled = !joinFiles.length;
+    $('joinSaveButton').disabled = !joinFiles.length;
+    joinFiles.forEach((file, i) => {
+      const row = document.createElement('div'); row.className = 'joinrow';
+      const idx = document.createElement('span'); idx.className = 'partsize'; idx.textContent = String(i + 1).padStart(2, '0');
+      const name = document.createElement('span'); name.className = 'partname'; name.textContent = file.name; name.title = file.name;
+      const size = document.createElement('span'); size.className = 'partsize'; size.textContent = readableSize(file.size);
+      const up = document.createElement('button'); up.className = 'move'; up.textContent = '↑'; up.disabled = i === 0; up.setAttribute('aria-label', `Move ${file.name} up`);
+      up.addEventListener('click', () => { [joinFiles[i - 1], joinFiles[i]] = [joinFiles[i], joinFiles[i - 1]]; renderJoin(); });
+      const down = document.createElement('button'); down.className = 'move'; down.textContent = '↓'; down.disabled = i === joinFiles.length - 1; down.setAttribute('aria-label', `Move ${file.name} down`);
+      down.addEventListener('click', () => { [joinFiles[i + 1], joinFiles[i]] = [joinFiles[i], joinFiles[i + 1]]; renderJoin(); });
+      row.append(idx, name, size, up, down); root.append(row);
+    });
+  }
+  attachDrop($('joinDrop'), $('joinInput'), files => {
+    joinFiles = files.sort((a,b) => a.name.localeCompare(b.name, undefined, {numeric:true, sensitivity:'base'}));
+    $('joinName').value = inferJoinedName(joinFiles[0].name);
+    clearStatus('joinStatus');
+    renderJoin();
+  });
+  $('joinButton').addEventListener('click', () => {
+    if (!joinFiles.length) return;
+    try {
+      const name = assertSafeFileName($('joinName').value, 'Joined filename');
+      const blob = new Blob(joinFiles, {type: 'application/octet-stream'});
+      downloadBlob(blob, name);
+      showStatus('joinStatus', `Download started for ${name} (${readableSize(blob.size)}).`, 'good');
+    } catch (e) { showStatus('joinStatus', e.message, 'error'); }
+  });
+  $('joinSaveButton').hidden = !canPickSave;
+  $('joinSaveButton').addEventListener('click', async () => {
+    if (!joinFiles.length || !canPickSave) return;
+    let name;
+    try { name = assertSafeFileName($('joinName').value, 'Joined filename'); }
+    catch (e) { showStatus('joinStatus', e.message, 'error'); return; }
+    let handle;
+    try { handle = await window.showSaveFilePicker({suggestedName:name}); }
+    catch (e) { if (e.name !== 'AbortError') showStatus('joinStatus', e.message, 'error'); return; }
+    let writer;
+    try {
+      writer = await handle.createWritable();
+      for (const file of joinFiles) await writer.write(file);
+      await writer.close();
+      showStatus('joinStatus', `Saved ${name} (${readableSize(joinFiles.reduce((n,f) => n + f.size, 0))}).`, 'good');
+    } catch (e) { if (writer) await writer.abort().catch(() => {}); showStatus('joinStatus', e.message, 'error'); }
+  });
+})();
+</script>
+</body>
+</html>
