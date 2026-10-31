@@ -632,19 +632,29 @@
     const m = name.match(/^(.*)\.part[-_.]?\d+(?:\.[a-z0-9_-]+)?$/i);
     return m && m[1] ? m[1] : 'rejoined-file';
   }
+  // Add entries with byte sequences at explicit offsets. Each pattern is an
+  // alternative; segments within one pattern must all match. Put more specific
+  // signatures before broader ones and describe shared containers as ambiguous.
+  const SIGNATURES = [
+    {name:'PNG', ext:'.png', patterns:[[[0,[0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]]]]},
+    {name:'JPEG', ext:'.jpg', aliases:['.jpg','.jpeg'], patterns:[[[0,[0xff,0xd8,0xff]]]]},
+    {name:'GIF', ext:'.gif', patterns:[[[0,'GIF87a']],[[0,'GIF89a']]]},
+    {name:'PDF', ext:'.pdf', patterns:[[[0,'%PDF-']]]},
+    {name:'ZIP-based container', ext:'.zip', ambiguous:true, patterns:[[[0,[0x50,0x4b,0x03,0x04]]],[[0,[0x50,0x4b,0x05,0x06]]],[[0,[0x50,0x4b,0x07,0x08]]]]},
+    {name:'gzip', ext:'.gz', aliases:['.gz','.gzip'], patterns:[[[0,[0x1f,0x8b,0x08]]]]},
+    {name:'WebP', ext:'.webp', patterns:[[[0,'RIFF'],[8,'WEBP']]]},
+    {name:'WAV', ext:'.wav', aliases:['.wav','.wave'], patterns:[[[0,'RIFF'],[8,'WAVE']]]},
+    {name:'BMP', ext:'.bmp', patterns:[[[0,'BM']]]},
+    {name:'TIFF', ext:'.tif', aliases:['.tif','.tiff'], patterns:[[[0,[0x49,0x49,0x2a,0x00]]],[[0,[0x4d,0x4d,0x00,0x2a]]]]},
+    {name:'7-Zip', ext:'.7z', patterns:[[[0,[0x37,0x7a,0xbc,0xaf,0x27,0x1c]]]]},
+    {name:'FLAC', ext:'.flac', patterns:[[[0,'fLaC']]]},
+    {name:'SQLite', ext:'.sqlite', aliases:['.sqlite','.sqlite3','.db'], patterns:[[[0,'SQLite format 3\0']]]},
+  ];
+  const SIGNATURE_BYTES = Math.max(...SIGNATURES.flatMap(type => type.patterns.flatMap(pattern => pattern.map(([offset, value]) => offset + value.length))));
   function identifySignature(bytes) {
-    const starts = (...values) => values.every((value, i) => bytes[i] === value);
-    const ascii = (offset, text) => [...text].every((c, i) => bytes[offset + i] === c.charCodeAt(0));
-    if (starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return {name: 'PNG', ext: '.png', aliases: ['.png']};
-    if (starts(0xff, 0xd8, 0xff)) return {name: 'JPEG', ext: '.jpg', aliases: ['.jpg', '.jpeg']};
-    if (ascii(0, 'GIF87a') || ascii(0, 'GIF89a')) return {name: 'GIF', ext: '.gif', aliases: ['.gif']};
-    if (ascii(0, '%PDF-')) return {name: 'PDF', ext: '.pdf', aliases: ['.pdf']};
-    if (starts(0x50, 0x4b, 0x03, 0x04) || starts(0x50, 0x4b, 0x05, 0x06) || starts(0x50, 0x4b, 0x07, 0x08)) return {name: 'ZIP-based container', ext: '.zip', aliases: ['.zip'], ambiguous: true};
-    if (starts(0x1f, 0x8b, 0x08)) return {name: 'gzip', ext: '.gz', aliases: ['.gz', '.gzip']};
-    if (ascii(0, 'RIFF') && ascii(8, 'WEBP')) return {name: 'WebP', ext: '.webp', aliases: ['.webp']};
-    if (ascii(0, 'RIFF') && ascii(8, 'WAVE')) return {name: 'WAV', ext: '.wav', aliases: ['.wav', '.wave']};
-    if (ascii(0, 'BM')) return {name: 'BMP', ext: '.bmp', aliases: ['.bmp']};
-    return null;
+    return SIGNATURES.find(type => type.patterns.some(pattern => pattern.every(([offset, value]) =>
+      Array.from(value).every((byte, i) => bytes[offset + i] === (typeof byte === 'string' ? byte.charCodeAt(0) : byte))
+    ))) || null;
   }
   function renderSignature() {
     const info = $('signatureInfo'), button = $('applyExtension');
@@ -659,7 +669,7 @@
     const name = $('joinName').value.trim().toLowerCase();
     // ZIP is shared by many formats; leave an existing extension alone.
     const ambiguousNamedFile = signature.ambiguous && /\.[^.]+$/.test(name);
-    if (!ambiguousNamedFile && !signature.aliases.some(ext => name.endsWith(ext))) {
+    if (!ambiguousNamedFile && !(signature.aliases || [signature.ext]).some(ext => name.endsWith(ext))) {
       button.textContent = `Append ${signature.ext} to filename`;
       button.hidden = false;
     }
@@ -673,7 +683,7 @@
     $('signatureInfo').textContent = 'Checking the first bytes on your device…';
     try {
       // Inspect the prefix of the concatenation, even if it spans several pieces.
-      const bytes = new Uint8Array(await new Blob(joinFiles).slice(0, 12).arrayBuffer());
+      const bytes = new Uint8Array(await new Blob(joinFiles).slice(0, SIGNATURE_BYTES).arrayBuffer());
       if (version !== signatureVersion) return;
       signature = identifySignature(bytes);
       renderSignature();
