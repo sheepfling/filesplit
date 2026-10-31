@@ -205,7 +205,7 @@
         <div class="actionrow"><button class="action" id="zipButton">↓ Download ZIP</button><button class="action secondary" id="folderButton" hidden>Save to folder</button></div>
         <p class="footnote">ZIP files are uncompressed: the pieces contain the original bytes. For very large files, save directly to a folder where supported.</p>
         <div class="commandbox"><span>Roughly equivalent Linux command</span><code id="linuxCommand"></code></div>
-        <div class="partslist"><h3>Individual pieces</h3><div id="partsRows"></div><button id="moreParts" class="more" hidden>Show more pieces</button></div>
+        <div class="partslist"><h3>Individual pieces</h3><div id="partsRows"></div><button id="previousParts" class="more" hidden>Previous pieces</button> <button id="moreParts" class="more" hidden>Show more pieces</button></div>
       </div>
     </div></aside>
   </div>
@@ -250,7 +250,7 @@
   let working = false;
   let cancelRequested = false;
   let joinFiles = [];
-  let showAll = false;
+  let partsPage = -1; // Initial compact preview; subsequent pages contain 100 pieces.
   const canPickDir = typeof window.showDirectoryPicker === 'function';
   const canPickSave = typeof window.showSaveFilePicker === 'function';
 
@@ -312,9 +312,16 @@
   const partName = (index) => `${plan.settings.prefix}${suffixFor(index, plan.ranges.length, plan.settings)}${plan.settings.extra}`;
   function setWorking(active, label = '') {
     working = active;
+    for (const el of document.querySelectorAll('#splitView .mode, #splitView input, #splitView select')) el.disabled = active;
+    $('splitDrop').setAttribute('aria-disabled', String(active));
+    $('splitTab').disabled = active;
+    $('joinTab').disabled = active;
     $('prepareButton').disabled = active || !sourceFile;
     $('zipButton').disabled = active || !plan || !plan.ranges.length || sourceFile.size > MAX_ZIP_BYTES;
     $('folderButton').disabled = active || !plan || !plan.ranges.length;
+    document.querySelectorAll('#partsRows button').forEach(button => { button.disabled = active; });
+    $('previousParts').disabled = active;
+    $('moreParts').disabled = active;
     $('splitProgress').hidden = !active;
     if (active) { cancelRequested = false; setProgress(0, label); }
   }
@@ -327,7 +334,7 @@
   function invalidate() {
     if (working) return;
     plan = null;
-    showAll = false;
+    partsPage = -1;
     $('splitResult').hidden = true;
     $('splitBlank').hidden = false;
     clearStatus('splitStatus');
@@ -440,21 +447,26 @@
     if (!plan) return;
     const root = $('partsRows'); root.replaceChildren();
     const count = plan.ranges.length;
-    const limit = showAll ? Math.min(count, 200) : Math.min(count, 9);
-    for (let i = 0; i < limit; i++) {
+    const start = partsPage < 0 ? 0 : partsPage * 100;
+    const limit = Math.min(count, partsPage < 0 ? 9 : start + 100);
+    for (let i = start; i < limit; i++) {
       const range = plan.ranges[i];
       const row = document.createElement('div'); row.className = 'partrow';
       const name = document.createElement('span'); name.className = 'partname'; name.textContent = partName(i); name.title = name.textContent;
       const size = document.createElement('span'); size.className = 'partsize'; size.textContent = readableSize(range.end - range.start);
       const btn = document.createElement('button'); btn.className = 'smalldl'; btn.textContent = '↓'; btn.title = `Download ${name.textContent}`; btn.setAttribute('aria-label', btn.title);
+      btn.disabled = working;
       btn.addEventListener('click', () => downloadBlob(sourceFile.slice(range.start, range.end), partName(i)));
       row.append(name, size, btn); root.append(row);
     }
-    $('moreParts').hidden = count <= 9 || (showAll && count <= 200);
-    $('moreParts').textContent = !showAll ? `Show more (${count.toLocaleString()} total)` : `Showing first 200 of ${count.toLocaleString()}; use ZIP or folder to get all`;
-    $('moreParts').disabled = showAll;
+    $('previousParts').hidden = partsPage <= 0;
+    $('previousParts').disabled = working;
+    $('moreParts').hidden = limit >= count;
+    $('moreParts').textContent = partsPage < 0 ? `Show more (${count.toLocaleString()} total)` : `Next pieces (${limit + 1}–${Math.min(limit + 100, count)} of ${count.toLocaleString()})`;
+    $('moreParts').disabled = working;
   }
-  $('moreParts').addEventListener('click', () => { showAll = true; renderPartRows(); });
+  $('moreParts').addEventListener('click', () => { partsPage++; renderPartRows(); });
+  $('previousParts').addEventListener('click', () => { partsPage--; renderPartRows(); });
   function renderPlan() {
     const ranges = plan.ranges;
     $('splitBlank').hidden = true; $('splitResult').hidden = false;
@@ -467,7 +479,7 @@
     $('zipButton').title = sourceFile.size > MAX_ZIP_BYTES ? 'ZIP downloads are limited to 1.5 GiB to avoid browser memory limits. Use Save to folder or individual files.' : '';
     $('folderButton').hidden = !canPickDir;
     $('folderButton').disabled = !ranges.length;
-    showAll = false; renderPartRows();
+    partsPage = -1; renderPartRows();
     if (sourceFile.size > MAX_ZIP_BYTES) showStatus('splitStatus', 'Large file: ZIP is disabled above 1.5 GiB. Use “Save to folder” in supported browsers, or download parts individually.');
     else if (!ranges.length) showStatus('splitStatus', 'The input is empty. No pieces are created by this split method.');
     else showStatus('splitStatus', `${ranges.length.toLocaleString()} part${ranges.length === 1 ? '' : 's'} ready. Choose ZIP, folder, or individual downloads.`, 'good');
@@ -571,11 +583,20 @@
   });
   $('folderButton').addEventListener('click', async () => {
     if (!canPickDir || !plan || !plan.ranges.length || working) return;
-    let folder;
-    try { folder = await window.showDirectoryPicker({mode: 'readwrite'}); }
-    catch (e) { if (e.name !== 'AbortError') showStatus('splitStatus', `Could not open folder: ${e.message}`, 'error'); return; }
-    setWorking(true, 'Saving parts…');
+    setWorking(true, 'Choosing a folder…');
     try {
+      const folder = await window.showDirectoryPicker({mode: 'readwrite'});
+      let existing = 0;
+      for (let i = 0; i < plan.ranges.length; i++) {
+        checkCancel();
+        try { await folder.getFileHandle(partName(i)); existing++; }
+        catch (e) { if (e.name !== 'NotFoundError') throw e; }
+        setProgress((i + 1) / plan.ranges.length, `Checking existing names · ${i + 1}/${plan.ranges.length}`);
+      }
+      if (existing && !window.confirm(`${existing.toLocaleString()} output file${existing === 1 ? '' : 's'} already exist in this folder and will be replaced. Continue?`)) {
+        showStatus('splitStatus', 'No files were saved. Choose another folder or change the output names.');
+        return;
+      }
       for (let i = 0; i < plan.ranges.length; i++) {
         checkCancel();
         const r = plan.ranges[i];
@@ -587,7 +608,7 @@
         if (i % 8 === 0) await new Promise(resolve => requestAnimationFrame(resolve));
       }
       showStatus('splitStatus', `Saved ${plan.ranges.length.toLocaleString()} pieces to the selected folder.`, 'good');
-    } catch (e) { showStatus('splitStatus', `${e.message} Files already written to the folder may remain there.`, 'error'); }
+    } catch (e) { if (e.name !== 'AbortError') showStatus('splitStatus', `${e.message} Files already written to the folder may remain there.`, 'error'); }
     finally { setWorking(false); }
   });
   function setTab(which) {
