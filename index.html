@@ -37,6 +37,8 @@
     h1 { margin: 10px 0 12px; font-size: clamp(38px, 5.6vw, 65px); line-height: 1.06; font-weight: 740; letter-spacing: -.065em; }
     h1 em { font-style: normal; color: var(--accent); }
     .intro { max-width: 710px; margin: 0; font-size: 17px; line-height: 1.65; color: var(--muted); }
+    .privacy { max-width: 710px; margin-top: 20px; padding: 13px 15px; border: 1px solid #326b58; border-radius: 10px; background: #123128; color: #c7f8e4; font-size: 13px; }
+    .privacy strong { color: #effff8; }
     .tabs { display: flex; gap: 7px; border-bottom: 1px solid var(--edge); margin: 30px 0 24px; }
     .tab { padding: 13px 23px; background: none; border: 0; color: var(--muted); font-weight: 700; border-bottom: 2px solid transparent; margin-bottom: -1px; }
     .tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
@@ -115,6 +117,7 @@
     .partsize { flex-shrink: 0; font-size: 11px; color: var(--muted); }
     .smalldl { border: 1px solid #3b5c62; color: #a7efd5; background: #1b3438; border-radius: 7px; font-size: 11px; min-height: 32px; padding: 5px 9px; font-weight: 750; }
     .more { background: none; border: 0; padding: 13px 0 0; font-size: 12px; color: var(--accent); text-align: left; }
+    .suggestion { display: inline-block; min-height: 44px; padding: 10px 12px; margin-top: 9px; border: 1px solid #3b5c62; border-radius: 8px; background: #1b3438; color: #b0f3d5; font-weight: 700; }
     .footer { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; color: var(--faint); font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #1d2d3b; }
     .footer strong { color: #b9cbda; }
     .joinlist { margin-top: 15px; max-height: 420px; overflow: auto; }
@@ -152,6 +155,7 @@
     <div class="eyebrow">One file. No installs. No uploads.</div>
     <h1>Big files, <em>smaller pieces.</em></h1>
     <p class="intro">A standalone, browser-based take on Linux <code>split</code>. Divide any file by size, line count, or number of parts. Reassemble it later, byte for byte. Everything happens on your device.</p>
+    <p class="privacy"><strong>Your files stay on your device.</strong> Splitting, joining, and file-type checks run entirely in your browser. FileSplit does not upload your files. Your browser still connects to the website to load this page.</p>
   </section>
   <nav class="tabs" role="tablist" aria-label="Operation">
     <button class="tab" id="splitTab" role="tab" aria-controls="splitView" aria-selected="true">Split a file</button>
@@ -221,6 +225,8 @@
       <div id="joinList" class="joinlist" aria-label="Pieces in joining order"></div>
       <div class="step"><span class="stepnum">02</span> Name the joined file</div>
       <label class="fieldlabel" for="joinName">Output filename</label><input class="control" id="joinName" type="text" value="rejoined-file" maxlength="250" spellcheck="false">
+      <div id="signatureInfo" class="status" role="status" aria-live="polite" hidden></div>
+      <button type="button" class="suggestion" id="applyExtension" hidden></button>
       <div class="actionrow"><button class="action" id="joinButton" disabled>↓ Download joined file</button><button class="action secondary" id="joinSaveButton" hidden disabled>Save to file</button></div>
       <div id="joinStatus" role="status" aria-live="polite" class="status" hidden></div>
       <p class="footnote">Arrange the files in the correct order before joining. Missing, duplicate, or out-of-order parts produce a different file.</p>
@@ -229,12 +235,12 @@
       <div class="previewheader"><h2>Reassembly</h2><span class="pretag">LOSSLESS</span></div>
       <p class="sub">Like <code>cat part-* &gt; original.file</code>, without a terminal.</p>
       <div class="stats"><div class="stat"><small>Selected pieces</small><strong id="joinCount">0</strong></div><div class="stat"><small>Combined size</small><strong id="joinSize">0 B</strong></div></div>
-      <div class="joininfo"><strong>Preserves the exact bytes</strong>The join operation appends each selected file without changing its contents or encoding. It does not decompress or interpret the pieces.</div>
+      <div class="joininfo"><strong>Preserves the exact bytes</strong>The join operation appends each selected file without changing its contents or encoding. A short header check suggests a file type; it does not validate or decompress the file.</div>
       <div class="infobox"><strong>Tip: order matters.</strong><p style="margin:7px 0 0">Pieces are initially sorted by filename (with numeric-aware sorting). If your names aren't numbered in order, use the arrows to rearrange them.</p></div>
       <div class="commandbox"><span>Linux equivalent</span><code>cat original.part-* &gt; original</code></div>
     </div></aside>
   </div>
-  <footer class="footer"><div><strong>Private by design.</strong> No server, cookies, analytics, accounts, or external dependencies.</div><div>Single-file app · HTML + CSS + JavaScript · Works offline</div></footer>
+  <footer class="footer"><div><strong>Private by design.</strong> No file uploads, app cookies, analytics, accounts, or external dependencies.</div><div>Single-file app · HTML + CSS + JavaScript · Can run offline once saved</div></footer>
 </div>
 <script>
 'use strict';
@@ -250,6 +256,9 @@
   let working = false;
   let cancelRequested = false;
   let joinFiles = [];
+  let joinNameEdited = false;
+  let signature = null;
+  let signatureVersion = 0;
   let partsPage = -1; // Initial compact preview; subsequent pages contain 100 pieces.
   const canPickDir = typeof window.showDirectoryPicker === 'function';
   const canPickSave = typeof window.showSaveFilePicker === 'function';
@@ -623,6 +632,82 @@
     const m = name.match(/^(.*)\.part[-_.]?\d+(?:\.[a-z0-9_-]+)?$/i);
     return m && m[1] ? m[1] : 'rejoined-file';
   }
+  // Add entries with byte sequences at explicit offsets. Each pattern is an
+  // alternative; segments within one pattern must all match. Put more specific
+  // signatures before broader ones and describe shared containers as ambiguous.
+  const SIGNATURES = [
+    {name:'PNG', ext:'.png', patterns:[[[0,[0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]]]]},
+    {name:'JPEG', ext:'.jpg', aliases:['.jpg','.jpeg'], patterns:[[[0,[0xff,0xd8,0xff]]]]},
+    {name:'GIF', ext:'.gif', patterns:[[[0,'GIF87a']],[[0,'GIF89a']]]},
+    {name:'PDF', ext:'.pdf', patterns:[[[0,'%PDF-']]]},
+    {name:'ZIP-based container', ext:'.zip', ambiguous:true, patterns:[[[0,[0x50,0x4b,0x03,0x04]]],[[0,[0x50,0x4b,0x05,0x06]]],[[0,[0x50,0x4b,0x07,0x08]]]]},
+    {name:'gzip', ext:'.gz', aliases:['.gz','.gzip'], patterns:[[[0,[0x1f,0x8b,0x08]]]]},
+    {name:'WebP', ext:'.webp', patterns:[[[0,'RIFF'],[8,'WEBP']]]},
+    {name:'WAV', ext:'.wav', aliases:['.wav','.wave'], patterns:[[[0,'RIFF'],[8,'WAVE']]]},
+    {name:'BMP', ext:'.bmp', patterns:[[[0,'BM']]]},
+    {name:'TIFF', ext:'.tif', aliases:['.tif','.tiff'], patterns:[[[0,[0x49,0x49,0x2a,0x00]]],[[0,[0x4d,0x4d,0x00,0x2a]]]]},
+    {name:'7-Zip', ext:'.7z', patterns:[[[0,[0x37,0x7a,0xbc,0xaf,0x27,0x1c]]]]},
+    {name:'FLAC', ext:'.flac', patterns:[[[0,'fLaC']]]},
+    {name:'SQLite', ext:'.sqlite', aliases:['.sqlite','.sqlite3','.db'], patterns:[[[0,'SQLite format 3\0']]]},
+  ];
+  const SIGNATURE_BYTES = Math.max(...SIGNATURES.flatMap(type => type.patterns.flatMap(pattern => pattern.map(([offset, value]) => offset + value.length))));
+  function identifySignature(bytes) {
+    return SIGNATURES.find(type => type.patterns.some(pattern => pattern.every(([offset, value]) =>
+      Array.from(value).every((byte, i) => bytes[offset + i] === (typeof byte === 'string' ? byte.charCodeAt(0) : byte))
+    ))) || null;
+  }
+  function renderSignature() {
+    const info = $('signatureInfo'), button = $('applyExtension');
+    button.hidden = true;
+    if (!signature) {
+      info.textContent = 'No familiar file signature found. Choose the filename and extension you expect.';
+      return;
+    }
+    info.textContent = signature.ambiguous
+      ? 'A ZIP-based signature was found. .zip is one option, but formats such as DOCX also use ZIP. Check the intended type. A signature is a hint, not validation.'
+      : `A ${signature.name} signature was found; ${signature.ext} may be appropriate. A signature is a hint, not validation.`;
+    const name = $('joinName').value.trim().toLowerCase();
+    // ZIP is shared by many formats; leave an existing extension alone.
+    const ambiguousNamedFile = signature.ambiguous && /\.[^.]+$/.test(name);
+    if (!ambiguousNamedFile && !(signature.aliases || [signature.ext]).some(ext => name.endsWith(ext))) {
+      button.textContent = `Append ${signature.ext} to filename`;
+      button.hidden = false;
+    }
+  }
+  async function inspectJoinSignature() {
+    const version = ++signatureVersion;
+    signature = null;
+    $('applyExtension').hidden = true;
+    $('signatureInfo').hidden = !joinFiles.length;
+    if (!joinFiles.length) return;
+    $('signatureInfo').textContent = 'Checking the first bytes on your device…';
+    try {
+      // Inspect the prefix of the concatenation, even if it spans several pieces.
+      const bytes = new Uint8Array(await new Blob(joinFiles).slice(0, SIGNATURE_BYTES).arrayBuffer());
+      if (version !== signatureVersion) return;
+      signature = identifySignature(bytes);
+      renderSignature();
+    } catch (e) {
+      if (version !== signatureVersion) return;
+      $('signatureInfo').textContent = 'Could not check the file signature. You can still choose a filename and join the pieces.';
+    }
+  }
+  $('joinName').addEventListener('input', () => {
+    joinNameEdited = true;
+    if (signature) renderSignature();
+  });
+  $('applyExtension').addEventListener('click', () => {
+    if (!signature) return;
+    const input = $('joinName');
+    if (input.value.length + signature.ext.length > input.maxLength) {
+      showStatus('joinStatus', 'The filename is too long to append the suggested extension. Shorten it first.', 'error');
+      return;
+    }
+    input.value += signature.ext;
+    joinNameEdited = true;
+    renderSignature();
+    input.focus();
+  });
   function renderJoin() {
     const root = $('joinList'); root.replaceChildren();
     $('joinCount').textContent = joinFiles.length.toLocaleString();
@@ -640,10 +725,11 @@
       down.addEventListener('click', () => { [joinFiles[i + 1], joinFiles[i]] = [joinFiles[i], joinFiles[i + 1]]; renderJoin(); });
       row.append(idx, name, size, up, down); root.append(row);
     });
+    inspectJoinSignature();
   }
   attachDrop($('joinDrop'), $('joinInput'), files => {
     joinFiles = files.sort((a,b) => a.name.localeCompare(b.name, undefined, {numeric:true, sensitivity:'base'}));
-    $('joinName').value = inferJoinedName(joinFiles[0].name);
+    if (!joinNameEdited) $('joinName').value = inferJoinedName(joinFiles[0].name);
     clearStatus('joinStatus');
     renderJoin();
   });
